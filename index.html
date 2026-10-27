@@ -277,7 +277,9 @@ input[type=text]:focus{outline:none;border-color:var(--gold);}
     <div class="rank-hdr">
       <span class="card-title">Ranking de Produtos</span>
       <span style="font-size:11px;color:var(--muted);margin-left:4px;">· clique na linha para ver por dia · marque ☑ para comparar no gráfico</span>
-      <input type="text" id="rank-q" class="rank-q" placeholder="🔍 buscar produto…" oninput="renderRanking(getFilteredDates())">
+      <span id="rank-cnt" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+      <button class="btn btn-sm" onclick="markRankResults()" title="Marca para comparar no gráfico todos os produtos que aparecem na busca">☑ Marcar resultados</button>
+      <input type="text" id="rank-q" class="rank-q" style="margin-left:0;min-width:260px" placeholder="🔍 buscar por SKU ou nome (ex.: 103, 107 kit 3)" oninput="renderRanking(getFilteredDates())">
     </div>
     <table id="rank-tbl">
       <thead><tr>
@@ -451,6 +453,14 @@ const LS = 'modaly_v1';
 const FMT_R = v => 'R$ ' + (+v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 const FMT_N = v => (+v||0).toLocaleString('pt-BR');
 const FMT_D = s => s.slice(8)+'/'+s.slice(5,7);
+// Busca por SKU/nome: vírgula ou ; separa pedidos (OU); dentro de um pedido todas as palavras têm de aparecer (E).
+// Um pedido só de números ("103") acha o código do produto (começa com 103).
+function srchMatch(name, q) {
+  q = (q||'').trim().toLowerCase();
+  if (!q) return true;
+  const n = name.toLowerCase();
+  return q.split(/[,;]+/).map(t=>t.trim()).filter(Boolean).some(t => /^\d+$/.test(t) ? new RegExp('^\\s*'+t).test(n) : t.split(/\s+/).every(w=>n.includes(w)));
+}
 
 // ─── AUTO-SAVE STATE ───────────────────────────────────────────────────────
 let fileHandle = null;     // FileSystemFileHandle — survives while page is open
@@ -1135,6 +1145,17 @@ function addCompare(key) {
     const inp=document.getElementById('cmp-in'), t=inp.value.trim().toLowerCase();
     if (!t) return;
     const all=Object.values(idx);
+    if (/[,;]/.test(t)) {   // vários de uma vez: "103, 107"
+      const miss=[];
+      t.split(/[,;]+/).map(x=>x.trim()).filter(Boolean).forEach(x=>{
+        let h=all.find(s=>s.label.toLowerCase()===x) || (/^\d+$/.test(x)&&idx['#'+x]);
+        if(!h){ const c=all.filter(s=>srchMatch(s.label,x)); if(c.length===1) h=c[0]; }
+        if(h){ if(!cmpKeys.includes(h.key)) cmpKeys.push(h.key); } else miss.push(x);
+      });
+      if(miss.length) showToast('Não achei: '+miss.join(', '),'err');
+      inp.value=''; renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates());
+      return;
+    }
     let hit=all.find(s=>s.label.toLowerCase()===t) || (/^\d+$/.test(t)&&idx['#'+t]);
     if (!hit) { const c=all.filter(s=>s.label.toLowerCase().includes(t)); if(c.length===1) hit=c[0]; }
     if (!hit) { showToast('Não achei "'+inp.value+'" — escolha uma opção da lista.','err'); return; }
@@ -1229,9 +1250,18 @@ function sortBy(k) {
   if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=k==='name'?1:-1;}
   renderRanking(getFilteredDates());
 }
+let rankVisible=[];
+function markRankResults(){
+  const idx=seriesIndex(), add=rankVisible.filter(g=>idx[g]&&!cmpKeys.includes(g));
+  if(!rankVisible.length){ showToast('Nada na lista para marcar.','err'); return; }
+  const room=Math.max(0,12-cmpKeys.length);
+  add.slice(0,room).forEach(g=>cmpKeys.push(g));
+  if(add.length>room) showToast('Marquei só '+room+' (o gráfico comporta até 12). Refine a busca.','err');
+  renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates());
+}
 function renderRanking(dates) {
   const q=(document.getElementById('rank-q')?.value||'').trim().toLowerCase();
-  const groups=allGroups().filter(g=>!q||g.toLowerCase().includes(q));
+  const groups=allGroups().filter(g=>srchMatch(g,q));
   const rows=groups.map(g=>({g,...groupPeriod(g,dates)}));
   ['name','unid','itens','fat','lucro','lpa','ads'].forEach(k=>{ const el=document.getElementById('sort-'+k); if(el) el.textContent=''; });
   const el=document.getElementById('sort-'+sortKey); if(el) el.textContent=sortDir<0?'▼':'▲';
@@ -1254,6 +1284,8 @@ function renderRanking(dates) {
     tbody.appendChild(tr);
   });
   if(!pos) tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">Nenhum produto encontrado.</td></tr>';
+  rankVisible=rows.filter(r=>r.unid||r.fat).map(r=>r.g);
+  const cnt=document.getElementById('rank-cnt'); if(cnt) cnt.textContent=q?pos+' resultado'+(pos===1?'':'s'):'';
 }
 
 // ─── DRILL DOWN ──────────────────────────────────────────────────────────────
@@ -1503,13 +1535,18 @@ function adsSeries(dates,gl){   // gl = lista de anúncios (vazia = todos)
 }
 function adsBuild(){
   document.getElementById('ads-wrap').innerHTML=`
+    <div class="ads-ctl" style="margin-bottom:10px">
+      <input type="search" id="ads-q" placeholder="🔍 buscar anúncio por SKU ou nome (ex.: 103, 107 kit 3)" style="flex:1;min-width:240px;max-width:560px;font-size:14px;padding:9px 12px">
+      <span id="ads-cnt" style="color:var(--muted);font-size:12px"></span>
+      <button class="btn btn-sm" onclick="adsCheckResults(true)" title="Marca todos os anúncios que aparecem na busca">☑ Marcar resultados</button>
+      <button class="btn btn-sm" onclick="adsCheckResults(false)" title="Desmarca os que aparecem na busca">☐ Desmarcar resultados</button>
+    </div>
     <div class="ads-ctl">
       <span style="color:var(--muted);font-size:12px">PERÍODO</span>
       <button class="btn btn-sm" data-ap="7">7d</button><button class="btn btn-sm" data-ap="14">14d</button><button class="btn btn-sm" data-ap="30">30d</button><button class="btn btn-sm on" data-ap="all">Tudo</button>
       <input type="date" id="ads-from" title="De"><span style="color:var(--muted)">→</span><input type="date" id="ads-to" title="Até">
       <span class="sp"></span>
       <button class="btn btn-sm on" data-af="all">Todos</button><button class="btn btn-sm" data-af="bad">Fora do saudável</button><button class="btn btn-sm" data-af="ok">Saudáveis</button>
-      <input type="search" id="ads-q" placeholder="buscar anúncio…">
     </div>
     <div class="ads-meta">Metas saudáveis: <b>Margem ≥ ${ADS_META.mg}%</b> · <b>TACOS ≤ ${ADS_META.tacos}%</b> · <b>MPA ≥ ${ADS_META.mpa}%</b>. Anúncios somam as cores (R1 + R2 + …). Margem, TACOS e MPA são <b>médias ponderadas pelo faturamento</b> do período (TACOS = Margem − MPA).</div>
     <div class="kpi-row ads-kpi" id="ads-kpis"></div>
@@ -1585,6 +1622,7 @@ function adsRenderTable(){
   const st=r=>r.falhas.length?`<span class="chip bad">${r.falhas.join(' · ')}</span>`:'<span class="chip ok">✓ Saudável</span>';
   const cells=r=>`<td>${FMT_N(r.unid)}</td><td>${FMT_R(r.fat)}</td><td>${adsF(r.share==null?100:r.share)}</td><td class="${cMg(r)}">${adsF(r.mg)}</td><td class="${cTa(r)}">${adsF(r.tacos)}</td><td class="${cMp(r)}">${adsF(r.mpa)}</td><td>${FMT_R(r.lucro)}</td><td>${FMT_R(r.ads)}</td><td>${FMT_R(r.lpa)}</td><td>${st(r)}</td>`;
   const allOn=list.length&&list.every(r=>adsChecked.has(r.g));
+  const cnt=document.getElementById('ads-cnt'); if(cnt) cnt.textContent=`${list.length} anúncio${list.length===1?'':'s'}`;
   const H=[['g','Anúncio'],['unid','Unid'],['fat','Faturamento'],['share','% fat'],['mg','Margem'],['tacos','TACOS'],['mpa','MPA'],['lucro','Lucro bruto'],['ads','Ads'],['lpa','Lucro pós-ads'],['st','Situação']];
   const arrow=x=>x===k?(dir>0?' ▲':' ▼'):'';
   document.getElementById('ads-table').innerHTML=`<table class="ads-tbl"><thead><tr><th style="width:28px;cursor:default"><input type="checkbox" class="cball" title="Marcar todos os anúncios da lista" ${allOn?'checked':''}></th>${H.map(([c,l])=>`<th data-k="${c}">${l}${arrow(c)}</th>`).join('')}</tr></thead><tbody>
@@ -1593,9 +1631,10 @@ function adsRenderTable(){
     </tbody></table>`;
 }
 function adsVisible(){
-  const q=(document.getElementById('ads-q').value||'').trim().toLowerCase();
-  return adsData.rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&(!q||r.g.toLowerCase().includes(q)));
+  const q=document.getElementById('ads-q').value;
+  return adsData.rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&srchMatch(r.g,q));
 }
+function adsCheckResults(on){ adsVisible().forEach(r=>on?adsChecked.add(r.g):adsChecked.delete(r.g)); adsAfterCheck(); }
 function adsAfterCheck(){ adsRenderSum(); adsRenderChart(); adsRenderTable(); }
 function adsRenderSum(){
   const box=document.getElementById('ads-sum');
