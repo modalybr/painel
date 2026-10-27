@@ -104,6 +104,7 @@ body.server .server-only{display:inline-block!important;}
 .ads-tbl th:first-child,.ads-tbl td:first-child{text-align:left;}
 .ads-tbl td{text-align:right;white-space:nowrap;}
 .ads-tbl td.nm{white-space:normal;min-width:200px;}
+.ads-tbl th:nth-child(2),.ads-tbl td:nth-child(2){text-align:left;}.ads-tbl td.ck,.ads-tbl th:first-child{text-align:center;width:28px;}.ads-tbl input[type=checkbox]{accent-color:var(--gold);cursor:pointer;width:15px;height:15px;}
 .ads-tbl tr.row{cursor:pointer;}.ads-tbl tr.row:hover td{background:var(--bg3);}
 .ads-tbl tr.sel td{background:var(--bg4);}
 .ads-tbl tr.tot td{background:var(--bg3);font-weight:700;border-bottom:2px solid var(--gold);}
@@ -1454,6 +1455,7 @@ document.addEventListener('keydown', e => { if (e.key==='Escape' && document.get
 // Metas saudáveis (mude aqui se precisar): Margem ≥ 18% · TACOS ≤ 5% · MPA ≥ 13%
 const ADS_META = {mg:18, tacos:5, mpa:13};
 let adsPeriod='all', adsSort={k:'fat',dir:-1}, adsFilter='all', adsSel=null, adsCh=null, adsBuilt=false;
+const adsChecked=new Set();   // anúncios marcados com ✓ para somar
 const adsEsc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const adsPct=(a,b)=>b>0?a/b*100:0;
 const adsR1=v=>Math.round(v*10)/10;
@@ -1491,11 +1493,11 @@ function adsAgg(dates){
   rows.forEach(r=>r.share=adsPct(r.fat,tot.fat));
   return {rows,tot:adsCalc(tot)};
 }
-function adsSeries(dates,g){
+function adsSeries(dates,gl){   // gl = lista de anúncios (vazia = todos)
   return dates.map(dt=>{
     const gs=(APP[dt]||{}).groups||{}; let f=0,l=0,p=0,a=0;
     const add=x=>{f+=+x.fat||0;l+=+x.lucro||0;p+=+x.lpa||0;a+=+x.ads||0;};
-    if(g){ if(gs[g]) add(gs[g]); } else Object.values(gs).forEach(add);
+    if(gl.length){ gl.forEach(g=>{ if(gs[g]) add(gs[g]); }); } else Object.values(gs).forEach(add);
     return f>0?{mg:l/f*100,mpa:p/f*100,tacos:a/f*100}:null;
   });
 }
@@ -1511,6 +1513,7 @@ function adsBuild(){
     </div>
     <div class="ads-meta">Metas saudáveis: <b>Margem ≥ ${ADS_META.mg}%</b> · <b>TACOS ≤ ${ADS_META.tacos}%</b> · <b>MPA ≥ ${ADS_META.mpa}%</b>. Anúncios somam as cores (R1 + R2 + …). Margem, TACOS e MPA são <b>médias ponderadas pelo faturamento</b> do período (TACOS = Margem − MPA).</div>
     <div class="kpi-row ads-kpi" id="ads-kpis"></div>
+    <div id="ads-sum"></div>
     <div class="card" style="margin-bottom:18px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span class="kpi-lbl" style="margin:0" id="ads-ctitle"></span><button class="btn btn-sm" id="ads-clear" style="display:none" onclick="adsPick(null)">✕ ver todos</button></div>
       <div class="ads-chart"><canvas id="ads-canvas"></canvas></div>
@@ -1522,6 +1525,9 @@ function adsBuild(){
   ['ads-from','ads-to'].forEach(id=>document.getElementById(id).onchange=()=>{adsPeriod='custom'; adsRender();});
   document.getElementById('ads-q').oninput=adsRenderTable;
   document.getElementById('ads-table').addEventListener('click',e=>{
+    const cb=e.target.closest('input.cb'); if(cb){ const g=cb.dataset.g; cb.checked?adsChecked.add(g):adsChecked.delete(g); adsAfterCheck(); return; }
+    if(e.target.closest('input.cball')){ const on=e.target.checked; adsVisible().forEach(r=>on?adsChecked.add(r.g):adsChecked.delete(r.g)); adsAfterCheck(); return; }
+    if(e.target.closest('td.ck')) return;
     const th=e.target.closest('th[data-k]'); if(th){const k=th.dataset.k; adsSort=adsSort.k===k?{k,dir:-adsSort.dir}:{k,dir:k==='g'?1:-1}; adsRenderTable(); return;}
     const tr=e.target.closest('tr.row'); if(tr) adsPick(adsSel===tr.dataset.g?null:tr.dataset.g);
   });
@@ -1535,7 +1541,8 @@ function adsRender(){
   const dates=adsDates();
   adsData={dates,...adsAgg(dates)};
   if(adsSel&&!adsData.rows.some(r=>r.g===adsSel)) adsSel=null;
-  adsRenderKpis(); adsRenderChart(); adsRenderTable();
+  [...adsChecked].forEach(g=>{ if(!adsData.rows.some(r=>r.g===g)) adsChecked.delete(g); });
+  adsRenderKpis(); adsRenderSum(); adsRenderChart(); adsRenderTable();
 }
 function adsRenderKpis(){
   const {rows,tot,dates}=adsData;
@@ -1552,14 +1559,14 @@ function adsRenderKpis(){
     card('Faturamento em alerta',FMT_R(alertFat),`${adsF(adsPct(alertFat,tot.fat))} do faturamento`,alertFat?'bad':'ok');
 }
 function adsRenderChart(){
-  const {dates}=adsData, ser=adsSeries(dates,adsSel);
+  const {dates}=adsData, gl=adsChecked.size?[...adsChecked]:(adsSel?[adsSel]:[]), ser=adsSeries(dates,gl);
   const cs=getComputedStyle(document.documentElement), col=n=>cs.getPropertyValue(n).trim();
   const line=(label,key,c,dash)=>({label,data:ser.map(x=>x?+x[key].toFixed(2):null),borderColor:c,backgroundColor:c,borderWidth:2,pointRadius:3,tension:.25,spanGaps:true,borderDash:dash||[]});
   const meta=(label,v,c)=>({label,data:dates.map(()=>v),borderColor:c,borderWidth:1,borderDash:[6,4],pointRadius:0});
   const g=col('--gold'),gr=col('--green'),rd=col('--red'),mu=col('--muted');
   if(adsCh){adsCh.destroy();adsCh=null;}
-  document.getElementById('ads-ctitle').textContent='EVOLUÇÃO DIÁRIA · '+(adsSel||'TODOS OS ANÚNCIOS');
-  document.getElementById('ads-clear').style.display=adsSel?'':'none';
+  document.getElementById('ads-ctitle').textContent='EVOLUÇÃO DIÁRIA · '+(adsChecked.size?`SOMA DE ${adsChecked.size} ANÚNCIO${adsChecked.size>1?'S':''} MARCADO${adsChecked.size>1?'S':''}`:(adsSel||'TODOS OS ANÚNCIOS'));
+  document.getElementById('ads-clear').style.display=(adsSel&&!adsChecked.size)?'':'none';
   if(typeof Chart==='undefined') return;
   adsCh=new Chart(document.getElementById('ads-canvas'),{type:'line',
     data:{labels:dates.map(FMT_D),datasets:[
@@ -1571,18 +1578,48 @@ function adsRenderChart(){
       scales:{x:{ticks:{color:mu},grid:{color:col('--border')}},y:{ticks:{color:mu,callback:v=>v+'%'},grid:{color:col('--border')}}}}});
 }
 function adsRenderTable(){
-  const {rows,tot}=adsData, q=(document.getElementById('ads-q').value||'').trim().toLowerCase(), {k,dir}=adsSort;
-  let list=rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&(!q||r.g.toLowerCase().includes(q)));
+  const {tot}=adsData, {k,dir}=adsSort;
+  let list=adsVisible();
   list.sort((a,b)=>k==='g'?dir*a.g.localeCompare(b.g,'pt-BR',{numeric:true}):k==='st'?dir*(a.falhas.length-b.falhas.length)||b.fat-a.fat:dir*(a[k]-b[k]));
   const cMg=r=>adsR1(r.mg)>=ADS_META.mg?'ok':'bad', cTa=r=>adsR1(r.tacos)<=ADS_META.tacos?'ok':'bad', cMp=r=>adsR1(r.mpa)>=ADS_META.mpa?'ok':'bad';
   const st=r=>r.falhas.length?`<span class="chip bad">${r.falhas.join(' · ')}</span>`:'<span class="chip ok">✓ Saudável</span>';
   const cells=r=>`<td>${FMT_N(r.unid)}</td><td>${FMT_R(r.fat)}</td><td>${adsF(r.share==null?100:r.share)}</td><td class="${cMg(r)}">${adsF(r.mg)}</td><td class="${cTa(r)}">${adsF(r.tacos)}</td><td class="${cMp(r)}">${adsF(r.mpa)}</td><td>${FMT_R(r.lucro)}</td><td>${FMT_R(r.ads)}</td><td>${FMT_R(r.lpa)}</td><td>${st(r)}</td>`;
+  const allOn=list.length&&list.every(r=>adsChecked.has(r.g));
   const H=[['g','Anúncio'],['unid','Unid'],['fat','Faturamento'],['share','% fat'],['mg','Margem'],['tacos','TACOS'],['mpa','MPA'],['lucro','Lucro bruto'],['ads','Ads'],['lpa','Lucro pós-ads'],['st','Situação']];
   const arrow=x=>x===k?(dir>0?' ▲':' ▼'):'';
-  document.getElementById('ads-table').innerHTML=`<table class="ads-tbl"><thead><tr>${H.map(([c,l])=>`<th data-k="${c}">${l}${arrow(c)}</th>`).join('')}</tr></thead><tbody>
-    <tr class="tot"><td>TOTAL · média ponderada</td>${cells(tot)}</tr>
-    ${list.map(r=>`<tr class="row ${r.g===adsSel?'sel':''}" data-g="${adsEsc(r.g)}"><td class="nm">${adsEsc(r.g)}</td>${cells(r)}</tr>`).join('')||'<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">Nenhum anúncio nesse filtro.</td></tr>'}
+  document.getElementById('ads-table').innerHTML=`<table class="ads-tbl"><thead><tr><th style="width:28px;cursor:default"><input type="checkbox" class="cball" title="Marcar todos os anúncios da lista" ${allOn?'checked':''}></th>${H.map(([c,l])=>`<th data-k="${c}">${l}${arrow(c)}</th>`).join('')}</tr></thead><tbody>
+    <tr class="tot"><td class="ck"></td><td>TOTAL · média ponderada</td>${cells(tot)}</tr>
+    ${list.map(r=>`<tr class="row ${r.g===adsSel||adsChecked.has(r.g)?'sel':''}" data-g="${adsEsc(r.g)}"><td class="ck"><input type="checkbox" class="cb" data-g="${adsEsc(r.g)}" ${adsChecked.has(r.g)?'checked':''}></td><td class="nm">${adsEsc(r.g)}</td>${cells(r)}</tr>`).join('')||'<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">Nenhum anúncio nesse filtro.</td></tr>'}
     </tbody></table>`;
+}
+function adsVisible(){
+  const q=(document.getElementById('ads-q').value||'').trim().toLowerCase();
+  return adsData.rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&(!q||r.g.toLowerCase().includes(q)));
+}
+function adsAfterCheck(){ adsRenderSum(); adsRenderChart(); adsRenderTable(); }
+function adsRenderSum(){
+  const box=document.getElementById('ads-sum');
+  const sel=adsData.rows.filter(r=>adsChecked.has(r.g));
+  if(!sel.length){ box.innerHTML=''; return; }
+  const t={unid:0,fat:0,lucro:0,lpa:0,ads:0};
+  sel.forEach(r=>['unid','fat','lucro','lpa','ads'].forEach(k=>t[k]+=r[k]));
+  adsCalc(t);
+  const m=(lbl,v,ok,meta)=>`<div style="min-width:120px"><div class="kpi-lbl" style="margin-bottom:4px">${lbl}</div><div class="kpi-val ${ok?'ok':'bad'}" style="font-size:24px">${adsF(v)}</div><div class="kpi-sub ${ok?'ok':'bad'}">${meta} ${ok?'✓':'⚠'}</div></div>`;
+  box.innerHTML=`<div class="card ads-kpi" style="margin-bottom:18px;border-color:var(--gold)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span class="kpi-lbl" style="margin:0;color:var(--gold)">SOMA DOS ${sel.length} ANÚNCIO${sel.length>1?'S':''} MARCADO${sel.length>1?'S':''} · média ponderada</span>
+      <span class="sp" style="flex:1"></span>
+      <button class="btn btn-sm" onclick="adsChecked.clear();adsAfterCheck()">✕ limpar marcados</button>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+      ${m('Margem',t.mg,adsR1(t.mg)>=ADS_META.mg,'meta ≥ '+ADS_META.mg+'%')}
+      ${m('TACOS',t.tacos,adsR1(t.tacos)<=ADS_META.tacos,'meta ≤ '+ADS_META.tacos+'%')}
+      ${m('MPA',t.mpa,adsR1(t.mpa)>=ADS_META.mpa,'meta ≥ '+ADS_META.mpa+'%')}
+      <div style="min-width:130px"><div class="kpi-lbl" style="margin-bottom:4px">Faturamento</div><div class="kpi-val" style="font-size:20px">${FMT_R(t.fat)}</div><div class="kpi-sub">${adsF(adsPct(t.fat,adsData.tot.fat))} do total · ${FMT_N(t.unid)} unid</div></div>
+      <div style="min-width:130px"><div class="kpi-lbl" style="margin-bottom:4px">Lucro bruto · Ads · pós-ads</div><div class="kpi-sub" style="font-size:12px;color:var(--text)">${FMT_R(t.lucro)}<br>${FMT_R(t.ads)}<br>${FMT_R(t.lpa)}</div></div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted)">${sel.map(r=>adsEsc(r.g)).join(' + ')}</div>
+  </div>`;
 }
 function adsPick(g){ adsSel=g; adsRenderChart(); adsRenderTable(); }
 function openAds(){
