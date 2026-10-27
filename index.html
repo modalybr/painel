@@ -89,6 +89,9 @@ body.server .server-only{display:inline-block!important;}
 .calc-bar .btn{background:#1c1c1c;border-color:#2a2a2a;color:#e8e8e8;}
 .calc-bar .btn:hover{border-color:var(--gold);color:var(--gold);}
 .calc-frame{flex:1;width:100%;border:0;background:#fff;}
+.srch-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.srch-row input[type=search]{flex:1;min-width:240px;max-width:520px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 12px;font-size:13px;}
+.srch-cnt{color:var(--muted);font-size:12px;}
 .ads-body{flex:1;overflow:auto;padding:18px 20px 40px;}
 .ads-wrap{max-width:1500px;margin:0 auto;}
 .ads-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px;}
@@ -277,9 +280,11 @@ input[type=text]:focus{outline:none;border-color:var(--gold);}
     <div class="rank-hdr">
       <span class="card-title">Ranking de Produtos</span>
       <span style="font-size:11px;color:var(--muted);margin-left:4px;">· clique na linha para ver por dia · marque ☑ para comparar no gráfico</span>
-      <span id="rank-cnt" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div class="srch-row" style="padding:0 0 12px">
+      <input type="search" id="rank-q" placeholder="🔍 buscar produto por SKU ou nome (ex.: 103, 107 kit 3)" oninput="renderRanking(getFilteredDates())">
+      <span id="rank-cnt" class="srch-cnt"></span>
       <button class="btn btn-sm" onclick="markRankResults()" title="Marca para comparar no gráfico todos os produtos que aparecem na busca">☑ Marcar resultados</button>
-      <input type="text" id="rank-q" class="rank-q" style="margin-left:0;min-width:260px" placeholder="🔍 buscar por SKU ou nome (ex.: 103, 107 kit 3)" oninput="renderRanking(getFilteredDates())">
     </div>
     <table id="rank-tbl">
       <thead><tr>
@@ -1535,12 +1540,6 @@ function adsSeries(dates,gl){   // gl = lista de anúncios (vazia = todos)
 }
 function adsBuild(){
   document.getElementById('ads-wrap').innerHTML=`
-    <div class="ads-ctl" style="margin-bottom:10px">
-      <input type="search" id="ads-q" placeholder="🔍 buscar anúncio por SKU ou nome (ex.: 103, 107 kit 3)" style="flex:1;min-width:240px;max-width:560px;font-size:14px;padding:9px 12px">
-      <span id="ads-cnt" style="color:var(--muted);font-size:12px"></span>
-      <button class="btn btn-sm" onclick="adsCheckResults(true)" title="Marca todos os anúncios que aparecem na busca">☑ Marcar resultados</button>
-      <button class="btn btn-sm" onclick="adsCheckResults(false)" title="Desmarca os que aparecem na busca">☐ Desmarcar resultados</button>
-    </div>
     <div class="ads-ctl">
       <span style="color:var(--muted);font-size:12px">PERÍODO</span>
       <button class="btn btn-sm" data-ap="7">7d</button><button class="btn btn-sm" data-ap="14">14d</button><button class="btn btn-sm" data-ap="30">30d</button><button class="btn btn-sm on" data-ap="all">Tudo</button>
@@ -1555,7 +1554,15 @@ function adsBuild(){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span class="kpi-lbl" style="margin:0" id="ads-ctitle"></span><button class="btn btn-sm" id="ads-clear" style="display:none" onclick="adsPick(null)">✕ ver todos</button></div>
       <div class="ads-chart"><canvas id="ads-canvas"></canvas></div>
     </div>
-    <div class="card"><div class="ads-scroll" id="ads-table"></div></div>`;
+    <div class="card">
+      <div class="srch-row" style="padding:0 0 12px">
+        <input type="search" id="ads-q" placeholder="🔍 buscar anúncio por SKU ou nome (ex.: 103, 107 kit 3)">
+        <span id="ads-cnt" class="srch-cnt"></span>
+        <button class="btn btn-sm" onclick="adsCheckResults(true)" title="Marca todos os anúncios que aparecem na busca">☑ Marcar resultados</button>
+        <button class="btn btn-sm" onclick="adsCheckResults(false)" title="Desmarca os que aparecem na busca">☐ Desmarcar resultados</button>
+      </div>
+      <div class="ads-scroll" id="ads-table"></div>
+    </div>`;
   const w=document.getElementById('ads-wrap');
   w.querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{adsPeriod=b.dataset.ap; document.getElementById('ads-from').value=''; document.getElementById('ads-to').value=''; adsRender();});
   w.querySelectorAll('[data-af]').forEach(b=>b.onclick=()=>{adsFilter=b.dataset.af; adsRender();});
