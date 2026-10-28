@@ -1271,9 +1271,7 @@ function markRankResults(){
     keepPos('rank-q',()=>{ cmpKeys=cmpKeys.filter(k=>!rankVisible.includes(k)); renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); });
     return;
   }
-  const room=Math.max(0,12-cmpKeys.length);
-  add.slice(0,room).forEach(g=>cmpKeys.push(g));
-  if(add.length>room) showToast('Marquei só '+room+' (o gráfico comporta até 12). Refine a busca.','err');
+  add.forEach(g=>cmpKeys.push(g));
   keepPos('rank-q',()=>{ renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); });
 }
 function renderRanking(dates) {
