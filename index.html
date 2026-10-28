@@ -284,7 +284,7 @@ input[type=text]:focus{outline:none;border-color:var(--gold);}
     <div class="srch-row" style="padding:0 0 12px">
       <input type="search" id="rank-q" placeholder="🔍 buscar produto por SKU ou nome (ex.: 103, 107 kit 3)" oninput="renderRanking(getFilteredDates())">
       <span id="rank-cnt" class="srch-cnt"></span>
-      <button class="btn btn-sm" onclick="markRankResults()" title="Marca para comparar no gráfico todos os produtos que aparecem na busca">☑ Marcar resultados</button>
+      <button class="btn btn-sm" id="rank-tgl" onclick="markRankResults()" title="Marca para comparar no gráfico todos os produtos que aparecem na busca; se já estiverem todos marcados, desmarca">☑ Marcar resultados</button>
     </div>
     <table id="rank-tbl">
       <thead><tr>
@@ -1267,6 +1267,10 @@ function keepPos(anchorId, fn, scroller) {
 function markRankResults(){
   const idx=seriesIndex(), add=rankVisible.filter(g=>idx[g]&&!cmpKeys.includes(g));
   if(!rankVisible.length){ showToast('Nada na lista para marcar.','err'); return; }
+  if(!add.length){   // todos já marcados: desmarca
+    keepPos('rank-q',()=>{ cmpKeys=cmpKeys.filter(k=>!rankVisible.includes(k)); renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); });
+    return;
+  }
   const room=Math.max(0,12-cmpKeys.length);
   add.slice(0,room).forEach(g=>cmpKeys.push(g));
   if(add.length>room) showToast('Marquei só '+room+' (o gráfico comporta até 12). Refine a busca.','err');
@@ -1299,6 +1303,7 @@ function renderRanking(dates) {
   if(!pos) tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px">Nenhum produto encontrado.</td></tr>';
   rankVisible=rows.filter(r=>r.unid||r.fat).map(r=>r.g);
   const cnt=document.getElementById('rank-cnt'); if(cnt) cnt.textContent=q?pos+' resultado'+(pos===1?'':'s'):'';
+  const tg=document.getElementById('rank-tgl'); if(tg) tg.textContent=(rankVisible.length&&rankVisible.every(g=>cmpKeys.includes(g)))?'☐ Desmarcar resultados':'☑ Marcar resultados';
 }
 
 // ─── DRILL DOWN ──────────────────────────────────────────────────────────────
@@ -1566,8 +1571,7 @@ function adsBuild(){
       <div class="srch-row" style="padding:0 0 12px">
         <input type="search" id="ads-q" placeholder="🔍 buscar anúncio por SKU ou nome (ex.: 103, 107 kit 3)">
         <span id="ads-cnt" class="srch-cnt"></span>
-        <button class="btn btn-sm" onclick="adsCheckResults(true)" title="Marca todos os anúncios que aparecem na busca">☑ Marcar resultados</button>
-        <button class="btn btn-sm" onclick="adsCheckResults(false)" title="Desmarca os que aparecem na busca">☐ Desmarcar resultados</button>
+        <button class="btn btn-sm" id="ads-tgl" onclick="adsToggleResults()" title="Marca todos os anúncios que aparecem na busca; se já estiverem todos marcados, desmarca">☑ Marcar resultados</button>
       </div>
       <div class="ads-scroll" id="ads-table"></div>
     </div>`;
@@ -1638,6 +1642,7 @@ function adsRenderTable(){
   const cells=r=>`<td>${FMT_N(r.unid)}</td><td>${FMT_R(r.fat)}</td><td>${adsF(r.share==null?100:r.share)}</td><td class="${cMg(r)}">${adsF(r.mg)}</td><td class="${cTa(r)}">${adsF(r.tacos)}</td><td class="${cMp(r)}">${adsF(r.mpa)}</td><td>${FMT_R(r.lucro)}</td><td>${FMT_R(r.ads)}</td><td>${FMT_R(r.lpa)}</td><td>${st(r)}</td>`;
   const allOn=list.length&&list.every(r=>adsChecked.has(r.g));
   const cnt=document.getElementById('ads-cnt'); if(cnt) cnt.textContent=`${list.length} anúncio${list.length===1?'':'s'}`;
+  const tg=document.getElementById('ads-tgl'); if(tg) tg.textContent=allOn?'☐ Desmarcar resultados':'☑ Marcar resultados';
   const H=[['g','Anúncio'],['unid','Unid'],['fat','Faturamento'],['share','% fat'],['mg','Margem'],['tacos','TACOS'],['mpa','MPA'],['lucro','Lucro bruto'],['ads','Ads'],['lpa','Lucro pós-ads'],['st','Situação']];
   const arrow=x=>x===k?(dir>0?' ▲':' ▼'):'';
   document.getElementById('ads-table').innerHTML=`<table class="ads-tbl"><thead><tr><th style="width:28px;cursor:default"><input type="checkbox" class="cball" title="Marcar todos os anúncios da lista" ${allOn?'checked':''}></th>${H.map(([c,l])=>`<th data-k="${c}">${l}${arrow(c)}</th>`).join('')}</tr></thead><tbody>
@@ -1649,7 +1654,7 @@ function adsVisible(){
   const q=document.getElementById('ads-q').value;
   return adsData.rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&srchMatch(r.g,q));
 }
-function adsCheckResults(on){ adsVisible().forEach(r=>on?adsChecked.add(r.g):adsChecked.delete(r.g)); adsAfterCheck(); }
+function adsToggleResults(){ const l=adsVisible(), on=!(l.length&&l.every(r=>adsChecked.has(r.g))); l.forEach(r=>on?adsChecked.add(r.g):adsChecked.delete(r.g)); adsAfterCheck(); }
 function adsAfterCheck(){ keepPos('ads-q',()=>{ adsRenderSum(); adsRenderChart(); adsRenderTable(); },document.querySelector('.ads-body')); }
 function adsRenderSum(){
   const box=document.getElementById('ads-sum');
