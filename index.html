@@ -1172,7 +1172,7 @@ function addCompare(key) {
 }
 function removeCompare(key){ cmpKeys=cmpKeys.filter(k=>k!==key); renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); }
 function clearCompare(){ cmpKeys=[]; renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); }
-function toggleCompare(key){ cmpKeys.includes(key)?removeCompare(key):addCompare(key); }
+function toggleCompare(key){ keepPos('rank-q',()=>{ cmpKeys.includes(key)?removeCompare(key):addCompare(key); }); }
 function drillToCompare(){
   if(!drillGroup) return;
   if(!cmpKeys.includes(drillGroup)) addCompare(drillGroup);
@@ -1256,13 +1256,21 @@ function sortBy(k) {
   renderRanking(getFilteredDates());
 }
 let rankVisible=[];
+// Mantém o campo de busca parado na tela quando algo acima dele (gráfico, cartão da soma) muda de altura.
+function keepPos(anchorId, fn, scroller) {
+  const a=document.getElementById(anchorId);
+  if(!a){ fn(); return; }
+  const top=a.getBoundingClientRect().top;
+  const fix=()=>{ const d=a.getBoundingClientRect().top-top; if(Math.abs(d)>1){ scroller?scroller.scrollTop+=d:window.scrollBy(0,d); } };
+  fn(); fix(); setTimeout(fix,120); setTimeout(fix,450);
+}
 function markRankResults(){
   const idx=seriesIndex(), add=rankVisible.filter(g=>idx[g]&&!cmpKeys.includes(g));
   if(!rankVisible.length){ showToast('Nada na lista para marcar.','err'); return; }
   const room=Math.max(0,12-cmpKeys.length);
   add.slice(0,room).forEach(g=>cmpKeys.push(g));
   if(add.length>room) showToast('Marquei só '+room+' (o gráfico comporta até 12). Refine a busca.','err');
-  renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates());
+  keepPos('rank-q',()=>{ renderCompareBar(); renderMainChart(getFilteredDates()); renderRanking(getFilteredDates()); });
 }
 function renderRanking(dates) {
   const q=(document.getElementById('rank-q')?.value||'').trim().toLowerCase();
@@ -1642,7 +1650,7 @@ function adsVisible(){
   return adsData.rows.filter(r=>(adsFilter==='all'||(adsFilter==='ok')===!r.falhas.length)&&srchMatch(r.g,q));
 }
 function adsCheckResults(on){ adsVisible().forEach(r=>on?adsChecked.add(r.g):adsChecked.delete(r.g)); adsAfterCheck(); }
-function adsAfterCheck(){ adsRenderSum(); adsRenderChart(); adsRenderTable(); }
+function adsAfterCheck(){ keepPos('ads-q',()=>{ adsRenderSum(); adsRenderChart(); adsRenderTable(); },document.querySelector('.ads-body')); }
 function adsRenderSum(){
   const box=document.getElementById('ads-sum');
   const sel=adsData.rows.filter(r=>adsChecked.has(r.g));
