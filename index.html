@@ -601,8 +601,11 @@ function mergeFromSeed(seedText) {
   try {
     const sd=new Function(seedText+'\nreturn {SEED_DATES,SEED_G,SEED_T};')();
     sd.SEED_DATES.forEach((dt,i)=>{
-      if (APP[dt]) return;
-      const t=sd.SEED_T[i], groups={};
+      const t=sd.SEED_T[i];
+      const cur=APP[dt]&&APP[dt].total;
+      // dia igual no arquivo e aqui: nada a fazer; diferente: vale o arquivo (a memória do navegador pode estar velha)
+      if (cur && ['fat','unid','lucro','lpa','ads'].every(k=>Math.abs((+cur[k]||0)-(+t[k==='fat'?'f':k==='unid'?'u':k==='lucro'?'l':k==='lpa'?'p':'a']||0))<0.01)) return;
+      const groups={};
       for (const [g,v] of Object.entries(sd.SEED_G)) groups[g]={unid:v.u[i],fat:v.f[i],lucro:v.l[i],lpa:v.p[i],ads:v.a[i],ml:v.ml[i],shopee:v.sp[i],tiktok:v.tt[i]};
       APP[dt]={groups,total:{fat:t.f,unid:t.u,lucro:t.l,lpa:t.p,ads:t.a,ml:t.ml,shopee:t.shopee,tiktok:t.tiktok}};
       added.push(dt);
@@ -637,7 +640,7 @@ async function initServerSave() {
     // O arquivo é a fonte de verdade: dias que existem nele e faltam aqui (memória do navegador
     // desatualizada) são trazidos para cá, em vez de serem apagados do arquivo.
     const added = mergeFromSeed(text.slice(si, ei));
-    if (added.length) { renderAll(); showToast('↻ Recuperado do arquivo: '+added.map(FMT_D).join(', ')); }
+    if (added.length) { renderAll(); showToast('↻ Atualizado a partir do arquivo: '+added.map(FMT_D).join(', ')); }
     await writeFile(true);
     pollSite(); setInterval(pollSite, 20000);
   } catch(e) { /* sem servidor: segue só com localStorage */ }
